@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucas TVS Meal Planner</title>
+    <style>
+        :root {
+            --primary: #2e7d32;
+            --secondary: #c62828;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f5ff;
+        }
+        .container {
+            max-width: 100%;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .shift-toggle {
+            display: flex;
+            gap: 10px;
+        }
+        .shift-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            background: #e0e0e0;
+            transition: all 0.3s;
+        }
+        .shift-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .days-container {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+        .day-card {
+            min-width: 280px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+        .date-header {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        .meal-list {
+            list-style: none;
+            margin-bottom: 15px;
+        }
+        .meal-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 8px;
+        }
+        .company-meal {
+            background: #e8f5e9;
+        }
+        .paid-meal {
+            background: #ffebee;
+        }
+        .check-btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            background: #f0f0f0;
+            cursor: pointer;
+        }
+        .check-btn.checked {
+            background: var(--primary);
+            color: white;
+        }
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+        @media (max-width: 480px) {
+            .day-card {
+                min-width: 85vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>🍱 Shift Meal Planner</h2>
+            <div class="shift-toggle">
+                <button class="shift-btn" id="btn-first" onclick="toggleShift('first')">1st Shift</button>
+                <button class="shift-btn" id="btn-second" onclick="toggleShift('second')">2nd Shift</button>
+            </div>
+        </div>
+
+        <div class="days-container" id="days-container"></div>
+
+        <div class="summary-card">
+            <h3>Monthly Summary</h3>
+            <p>Total Expense: ₹<span id="monthly-total">0</span></p>
+            <p>Days Completed: <span id="days-completed">0</span>/<span id="total-days">0</span></p>
+        </div>
+    </div>
+
+    <script>
+        const MEAL_PRICES = { dosa: 30, biryani: 100 };
+        let checkIns = JSON.parse(localStorage.getItem('mealCheckIns')) || {};
+        let currentShift = 'first';
+
+        // Auto-detect initial shift based on current week
+        const today = new Date();
+        const autoShift = getAutoShift(today);
+        currentShift = autoShift;
+        document.getElementById(`btn-${autoShift}`).classList.add('active');
+
+        function getAutoShift(date) {
+            const startDate = new Date(2024, 1, 1); // February 1, 2024
+            const timeDiff = date - startDate;
+            const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+            const weekNumber = Math.floor(daysDiff / 7) + 1;
+            return weekNumber % 2 === 1 ? 'first' : 'second';
+        }
+
+        function toggleShift(shift) {
+            currentShift = shift;
+            document.querySelectorAll('.shift-btn').forEach(btn => 
+                btn.classList.remove('active'));
+            document.getElementById(`btn-${shift}`).classList.add('active');
+            generatePlan();
+        }
+
+        function generatePlan() {
+            const daysContainer = document.getElementById('days-container');
+            daysContainer.innerHTML = '';
+            
+            // Generate 7 days starting from today
+            let monthlyTotal = 0;
+            let completedDays = 0;
+            
+            for(let i = 0; i < 7; i++) {
+                const date = new Date();
+                date.setDate(date.getDate() + i);
+                const isSunday = date.getDay() === 0;
+                const timestamp = date.getTime();
+                const mealPlan = getDailyPlan(date);
+                
+                const dayCard = document.createElement('div');
+                dayCard.className = 'day-card';
+                dayCard.innerHTML = `
+                    <div class="date-header">
+                        <h4>${date.toLocaleDateString('en-US', { weekday: 'short' })}</h4>
+                        <p>${date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</p>
+                    </div>
+                    <ul class="meal-list">
+                        ${mealPlan.meals.map(meal => `
+                            <li class="meal-item ${meal.type}-meal">
+                                <span>${meal.time}</span>
+                                <strong>${meal.name}</strong>
+                            </li>
+                        `).join('')}
+                    </ul>
+                    <p>Daily Cost: ₹${mealPlan.cost}</p>
+                    <button class="check-btn ${checkIns[timestamp] ? 'checked' : ''}" 
+                            onclick="toggleCheckIn(${timestamp}, this)">
+                        ${checkIns[timestamp] ? 'Checked ✓' : 'Check In'}
+                    </button>
+                `;
+                
+                daysContainer.appendChild(dayCard);
+                monthlyTotal += mealPlan.cost;
+                if(checkIns[timestamp]) completedDays++;
+            }
+
+            updateMonthlySummary();
+        }
+
+        function getDailyPlan(date) {
+            const isSunday = date.getDay() === 0;
+            let meals = [];
+            let cost = 0;
+
+            if(currentShift === 'first') {
+                if(isSunday) {
+                    meals = [
+                        { time: '10:30 AM', name: 'Lunch (Company)', type: 'company' },
+                        { time: '8:00 PM', name: 'Biryani (Paid)', type: 'paid' }
+                    ];
+                    cost = MEAL_PRICES.biryani;
+                } else {
+                    const altMeal = date.getDate() % 2 === 0 ? 'Chicken Rice' : 'Dosa ×2';
+                    meals = [
+                        { time: '10:30 AM', name: 'Lunch (Company)', type: 'company' },
+                        { time: '8:00 PM', name: `${altMeal} (Paid)`, type: 'paid' }
+                    ];
+                    cost = altMeal === 'Chicken Rice' ? 100 : 30;
+                }
+            } else {
+                meals = [
+                    { time: '1:30 PM', name: 'Lunch (Company)', type: 'company' },
+                    { time: '7:30 PM', name: 'Dinner (Company)', type: 'company' }
+                ];
+            }
+
+            return { meals, cost };
+        }
+
+        function toggleCheckIn(timestamp, btn) {
+            checkIns[timestamp] = !checkIns[timestamp];
+            btn.classList.toggle('checked');
+            btn.textContent = checkIns[timestamp] ? 'Checked ✓' : 'Check In';
+            localStorage.setItem('mealCheckIns', JSON.stringify(checkIns));
+            updateMonthlySummary();
+        }
+
+        function updateMonthlySummary() {
+            const now = new Date();
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+            let total = 0;
+            let completed = 0;
+
+            for(let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(now.getFullYear(), now.getMonth(), day);
+                const plan = getDailyPlan(date);
+                total += plan.cost;
+                if(checkIns[date.getTime()]) completed++;
+            }
+
+            document.getElementById('monthly-total').textContent = total;
+            document.getElementById('total-days').textContent = daysInMonth;
+            document.getElementById('days-completed').textContent = completed;
+        }
+
+        // Initial generation
+        generatePlan();
+    </script>
+</body>
+</html><ALOASK-SEPARATE-EDITORS><ALOASK-SEPARATE-EDITORS>
